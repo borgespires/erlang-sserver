@@ -1,0 +1,10 @@
+*
+
+# build
+!config
+!src
+!rebar.config
+!rebar.lock
+
+# deploy
+!_artifacts
