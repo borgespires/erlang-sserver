@@ -16,20 +16,13 @@ recv_http(Socket, R=#request{}) ->
         Error -> Error
     end.
 
-parse({http_request, Method, Path, _Version}) ->
-    {path, Method, from_ascii(Path)};
+parse({http_request, Method, {abs_path, Path}, _Version}) ->
+    {path, Method, Path};
 parse({http_header, _, Header, _, Val}) ->
     {header, {Header, Val}};
 parse(_) -> ok.
 
-from_ascii({abs_path, Bin}) -> io_lib:format("~s~n", [Bin]).
-
 create_response(R=#request{}) ->
-    io:fwrite(R#request.method),
-    io:fwrite(R#request.path),
-    lists:map(fun debug/1, R#request.headers),
+    io:format("~s ~s~n", [R#request.method, R#request.path]),
+    io:format("~s~n", [lists:flatten(io_lib:format("~p", [R#request.headers]))]),
     <<"HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nhello world!">>.
-
-
-% debug
-debug(Data) -> io:format("~w~n", [Data]).
