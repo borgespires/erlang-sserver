@@ -1,7 +1,13 @@
--module(sshelper).
--export([recv_http/1, create_response/1]).
+-module(req_handler).
+-export([recv_and_respond/1]).
 
 -record(request, { method, path="", headers=[] }).
+
+recv_and_respond(Socket) ->
+    Request = recv_http(Socket),
+    Response = create_response(Request),
+    gen_tcp:send(Socket, Response),
+    gen_tcp:close(Socket).
 
 recv_http(Socket) -> recv_http(Socket, #request{}).
 recv_http(Socket, R=#request{}) ->

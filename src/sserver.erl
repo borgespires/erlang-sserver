@@ -1,6 +1,5 @@
 -module(sserver).
 -export([start_link/1]).
--export([accept/1, recv_and_respond/1]).
 
 start_link(Port) ->
     case catch init(Port) of
@@ -28,29 +27,9 @@ init(Port) ->
     {ok, {ListenSocket, Acceptors}}.
 
 spawn_acceptors(ListenSocket, N) ->
-    [ { Id, spawn_acceptor(ListenSocket, Id) } || Id <- lists:seq(1, N) ].
+    [ { Id, acceptor:start_link(ListenSocket, Id) } || Id <- lists:seq(1, N) ].
 
-spawn_acceptor(ListenSocket, I) ->
-    Ref = list_to_atom("acceptor" ++ integer_to_list(I)),
-    Pid = spawn_link(?MODULE, accept, [ListenSocket]),
-    register(Ref, Pid),
-    Pid.
-
-accept(ListenSocket) ->
-    case gen_tcp:accept(ListenSocket) of
-        {ok, Socket} ->
-            spawn(?MODULE, recv_and_respond, [Socket]);
-        {error, closed} -> exit(closed);
-        Error -> erlang:error(Error)
-    end,
-    accept(ListenSocket).
-
-recv_and_respond(Socket) ->
-    Request = sshelper:recv_http(Socket),
-    Response = sshelper:create_response(Request),
-    gen_tcp:send(Socket, Response),
-    gen_tcp:close(Socket).
-
+% Supervision
 % trap acceptors exit messages and respawn
 loop(State = {ListenSocket, _Acceptors}) ->
     process_flag(trap_exit, true),
@@ -68,5 +47,5 @@ one_on_one({ListenSocket, Acceptors}, Pid) ->
         Acceptors
     ).
 
-respawn_if_crashed(ListenSocket, Pid, {I, Pid}) -> { I, spawn_acceptor(ListenSocket, I) };
+respawn_if_crashed(ListenSocket, Pid, {I, Pid}) -> { I, acceptor:start_link(ListenSocket, I) };
 respawn_if_crashed(_, _, Acceptor) -> Acceptor.
