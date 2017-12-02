@@ -1,6 +1,6 @@
 -module(sserver).
 -export([start_link/1]).
--export([accept/1, recv_loop/1]).
+-export([accept/1, recv_and_respond/1]).
 
 start_link(Port) ->
     case catch init(Port) of
@@ -14,12 +14,14 @@ start_link(Port) ->
 
 init(Port) ->
     Opts = [
-        {active, false},
-        binary,
-        {backlog, 256},
-        {packet, http_bin},
-        {raw,6,9,<<1:32/native>>},
-        {reuseaddr, true}
+        %% If the value is true, everything received is sent as messages to the receiving process.
+        %% If the value is false (passive mode), the process must explicitly receive incoming data by calling gen_tcp:recv/2,3,
+        {active, false}, % blocks on `:gen_tcp.recv/2` until data is available
+        binary, % receives data as binaries (instead of lists)
+        {backlog, 256}, %  maximum pending connections on the queue
+        {packet, http_bin}, % how to deal with the package (header size, how to parse)
+        % {raw,6,9,<<1:32/native>>}, % pass some option flags directly to the kernel (?what can we do with this)
+        {reuseaddr, true} % allows to reuse the address if the listener crashes
     ],
     {ok, ListenSocket} = gen_tcp:listen(Port, Opts),
     Acceptors = spawn_acceptors(ListenSocket, 1),
@@ -36,24 +38,18 @@ spawn_acceptor(ListenSocket, I) ->
 
 accept(ListenSocket) ->
     case gen_tcp:accept(ListenSocket) of
-        {ok, Socket} -> 
-            io:format("received new request~n"),
-            spawn(?MODULE, recv_loop, [Socket]);
+        {ok, Socket} ->
+            spawn(?MODULE, recv_and_respond, [Socket]);
         {error, closed} -> exit(closed);
         Error -> erlang:error(Error)
     end,
     accept(ListenSocket).
 
-recv_loop(Socket) ->
-    case gen_tcp:recv(Socket, 0) of
-        {ok, http_eoh} ->
-            Response = <<"HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\nhello world!">>,
-            gen_tcp:send(Socket, Response),
-            gen_tcp:close(Socket),
-            ok;
-        {ok, _Data} -> recv_loop(Socket);
-        Error -> Error
-    end.
+recv_and_respond(Socket) ->
+    Request = sshelper:recv_http(Socket),
+    Response = sshelper:create_response(Request),
+    gen_tcp:send(Socket, Response),
+    gen_tcp:close(Socket).
 
 % trap acceptors exit messages and respawn
 loop(State = {ListenSocket, _Acceptors}) ->
